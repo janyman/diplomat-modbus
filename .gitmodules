@@ -1,0 +1,3 @@
+[submodule "freemodbus"]
+	path = freemodbus
+	url = https://github.com/cwalter-at/freemodbus.git
