@@ -17,6 +17,7 @@ DEP_DIR       := $(BUILD_DIR)/dep
 
 CC            := avr-gcc
 OBJCOPY       := avr-objcopy
+OBJDUMP       := avr-objdump
 SIZE          := avr-size
 AVRDUDE       := avrdude
 
@@ -97,7 +98,7 @@ $(EEP): $(ELF)
 	$(OBJCOPY) $(HEX_EEPROM_FLAGS) -O ihex $< $@
 
 $(LSS): $(ELF)
-	$(OBJCOPY) -h -S $< $@
+	$(OBJDUMP) -h -S $< > $@
 
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(dir $@) $(dir $(DEP_DIR)/$*.d)
