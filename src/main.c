@@ -5,6 +5,11 @@
 #include "mb.h"
 #include "mbport.h"
 #include "ext_bus.h"
+#include "../avr-i2c-slave/I2CSlave.h"
+
+#ifndef UART_ECHO
+#define UART_ECHO 1
+#endif
 
 #ifndef I2C_SLAVE_ADDRESS
 #define I2C_SLAVE_ADDRESS 0x2e
@@ -17,87 +22,71 @@
 #define MODBUS_SLAVE_ADDRESS 0x0a
 
 #define REG_INPUT_START 1000
-#define REG_INPUT_NREGS 4
+#define REG_INPUT_NREGS 20
 
-static volatile uint8_t i2c_register;
-static volatile uint8_t i2c_response = 0xff;
-static volatile uint8_t i2c_write_pending;
+#define REG_INPUT_BOOT_POLL_CNT_OFFSET      0
+#define REG_INPUT_NORMAL_POLL_CNT_OFFSET    1
+#define REG_INPUT_EXT_REG_START_OFFSET      2
+
+#define NUM_EXT_REGS 2
+
+static int poll_reg_cnt = 0;
+static uint8_t polled_regs[] = { EXT_REG_OUTDOOR_TEMP, EXT_REG_BRINEIN_TEMP };
+static uint8_t ext_bus_current_reg;
+
+enum ext_bus_state { EXT_BUS_REG_ACCESS, EXT_BUS_DATA_ACCESS_LO, EXT_BUS_DATA_ACCESS_HI };
+enum ext_bus_state bus_state = EXT_BUS_REG_ACCESS;
 
 static USHORT usRegInputBuf[REG_INPUT_NREGS];
 
-static void
-i2c_slave_init(void)
-{
-    /* TWAR stores the seven-bit slave address in bits 7..1. */
-    TWAR = (uint8_t)(I2C_SLAVE_ADDRESS << 1);
+volatile uint8_t i2c_out_byte;
+volatile uint8_t ext_bus_reg_byte_lo;
+volatile uint8_t ext_bus_reg_byte_hi;
 
-    /* Enable TWI, its interrupt, and ACK all addressed transactions. */
-    TWCR = _BV(TWIE) | _BV(TWEA) | _BV(TWEN) | _BV(TWINT);
-}
+void I2C_received(uint8_t received_data) {
 
-static void
-i2c_handle_write_event(void)
-{
-    uint8_t reg;
-
-    if( i2c_write_pending == 0 )
-    {
-        return;
-    }
-
-    /* Keep the critical section short: the TWI ISR may update these values. */
-    cli();
-    reg = i2c_register;
-    i2c_write_pending = 0;
-    sei();
-
-    switch( reg )
-    {
-        //case 0xfd:
+    switch (bus_state) {
+    default:
+    case EXT_BUS_REG_ACCESS:
+        switch (received_data) {
+        case EXT_CMD_PING_QUERY_BOOT:
+            i2c_out_byte = EXT_REPLY_PING_ACK;
+            usRegInputBuf[REG_INPUT_BOOT_POLL_CNT_OFFSET]++;
+            break;
         case EXT_CMD_PING_QUERY:
-            i2c_response = EXT_REPLY_PING_ACK;
-            usRegInputBuf[1]++;
+            if (poll_reg_cnt < NUM_EXT_REGS) {
+                i2c_out_byte = polled_regs[poll_reg_cnt];
+                poll_reg_cnt++;
+            }
+            else {
+                i2c_out_byte = EXT_REPLY_PING_ACK;
+                usRegInputBuf[REG_INPUT_NORMAL_POLL_CNT_OFFSET]++;
+            }            
             break;
-
         default:
-            /* Unknown registers currently return the same placeholder value. */
-            //i2c_response = EXT_REPLY_PING_ACK;
+            // This is entered when a normal EXT BUS register is written to
+            ext_bus_current_reg = received_data;
+            bus_state = EXT_BUS_DATA_ACCESS_LO;
             break;
+        }
+        break;
+    case EXT_BUS_DATA_ACCESS_LO:
+        ext_bus_reg_byte_lo = received_data;
+        bus_state = EXT_BUS_DATA_ACCESS_HI;
+        break;
+    case EXT_BUS_DATA_ACCESS_HI:
+        ext_bus_reg_byte_hi = received_data;
+        bus_state = EXT_BUS_REG_ACCESS;
+        usRegInputBuf[REG_INPUT_EXT_REG_START_OFFSET + ext_bus_current_reg] = (ext_bus_reg_byte_hi << 8) | ext_bus_reg_byte_lo;
+        break;
     }
 }
 
-ISR(TWI_vect)
-{
-    switch( TW_STATUS )
-    {
-        case TW_SR_SLA_ACK:
-        case TW_SR_DATA_ACK:
-            /* The register address is the last byte written by the master. */
-            i2c_register = TWDR;
-            i2c_write_pending = 1;
-            TWCR = _BV(TWIE) | _BV(TWEA) | _BV(TWEN) | _BV(TWINT);
-            break;
-
-        case TW_ST_SLA_ACK:
-            TWDR = i2c_response;
-            TWCR = _BV(TWIE) | _BV(TWEA) | _BV(TWEN) | _BV(TWINT);
-            break;
-
-        case TW_ST_DATA_ACK:
-            /* If the master asks for more than one byte, keep returning 0xff. */
-            TWDR = 0xff;
-            TWCR = _BV(TWIE) | _BV(TWEA) | _BV(TWEN) | _BV(TWINT);
-            break;
-
-        case TW_SR_STOP:
-        case TW_ST_DATA_NACK:
-        case TW_ST_LAST_DATA:
-        default:
-            TWCR = _BV(TWIE) | _BV(TWEA) | _BV(TWEN) | _BV(TWINT);
-            break;
-    }
+void I2C_requested() {
+  I2C_transmitByte(i2c_out_byte);
 }
 
+#if !UART_ECHO
 int
 main(void)
 {
@@ -105,6 +94,7 @@ main(void)
 
     status = eMBInit(MB_RTU, MODBUS_SLAVE_ADDRESS, 0,
                      MODBUS_BAUD_RATE, MB_PAR_EVEN, 1);
+    
     if( status != MB_ENOERR )
     {
         for( ;; )
@@ -113,7 +103,9 @@ main(void)
         }
     }
 
-    i2c_slave_init();
+   
+    I2C_setCallbacks(I2C_received, I2C_requested);
+    I2C_init(I2C_SLAVE_ADDRESS);
 
     status = eMBEnable();
     if( status != MB_ENOERR )
@@ -124,15 +116,50 @@ main(void)
         }
     }
 
-    sei();
-
     for( ;; )
     {
         (void)eMBPoll();
-        i2c_handle_write_event();
-        usRegInputBuf[0]++;
+    
+        #if 0
+        uint8_t byte;
+        xMBPortSerialGetByte(&byte);
+        if (byte == 'a') {
+            xMBPortSerialPutByte('a');
+        } else {
+            xMBPortSerialPutByte('b');
+        }
+            #endif
+        
     }
 }
+
+#else
+int
+main(void)
+{
+    const uint16_t ubrr = (uint16_t)((F_CPU / (16UL * MODBUS_BAUD_RATE)) - 1UL);
+
+    /* Minimal 8-bit, even-parity, one-stop-bit UART echo for bench testing. */
+    UBRR0 = ubrr;
+    UCSR0C = _BV(UPM01) | _BV(UCSZ01) | _BV(UCSZ00);
+    UCSR0B = _BV(RXEN0) | _BV(TXEN0);
+
+    for( ;; )
+    {
+        uint8_t byte;
+
+        while( !( UCSR0A & _BV(RXC0) ) )
+        {
+        }
+        byte = UDR0;
+
+        while( !( UCSR0A & _BV(UDRE0) ) )
+        {
+        }
+        UDR0 = byte;
+    }
+}
+#endif
 
 eMBErrorCode
 eMBRegInputCB(UCHAR *pucRegBuffer, USHORT usAddress, USHORT usNRegs)

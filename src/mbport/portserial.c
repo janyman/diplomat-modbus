@@ -25,7 +25,7 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
-#include <avr/signal.h>
+#include <avr/interrupt.h>
 
 #include "port.h"
 
@@ -102,7 +102,7 @@ xMBPortSerialInit( UCHAR ucPORT, ULONG ulBaudRate, UCHAR ucDataBits, eMBParity e
             break;
     }
 
-#if defined (__AVR_ATmega168__)
+#if defined (__AVR_ATmega168__) || defined (__AVR_ATmega328P__)
     UCSRC |= ucUCSRC;
 #elif defined (__AVR_ATmega169__)
     UCSRC |= ucUCSRC;
@@ -138,18 +138,18 @@ xMBPortSerialGetByte( CHAR * pucByte )
     return TRUE;
 }
 
-SIGNAL( SIG_USART_DATA )
+ISR(USART_UDRE_vect)
 {
     pxMBFrameCBTransmitterEmpty(  );
 }
 
-SIGNAL( SIG_USART_RECV )
+ISR(USART_RX_vect)
 {
     pxMBFrameCBByteReceived(  );
 }
 
 #ifdef RTS_ENABLE
-SIGNAL( SIG_UART_TRANS )
+ISR(USART_TX_vect)
 {
     RTS_LOW;
 }

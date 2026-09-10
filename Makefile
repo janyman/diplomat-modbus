@@ -9,7 +9,10 @@ PROJECT       ?= diplomat-modbus
 MCU           ?= atmega328p
 F_CPU         ?= 16000000UL
 BAUD          ?= 9600
+UART_ECHO     ?= 0
 I2C_SLAVE_ADDRESS ?= 0x2e
+PROGRAMMER	  ?= arduino
+PROGRAMMER_PORT ?= /dev/ttyACM0
 
 BUILD_DIR     ?= build
 OBJ_DIR       := $(BUILD_DIR)/obj
@@ -34,6 +37,8 @@ MAP           := $(TARGET).map
 # Add application sources under src/ as they are implemented.
 APP_SOURCES := $(wildcard src/*.c)
 
+I2C_LIB_SOURCES := avr-i2c-slave/I2CSlave.c
+
 # FreeModbus protocol sources used by the RTU slave.
 MODBUS_SOURCES := \
 	$(FREEMODBUS_DIR)/mb.c \
@@ -54,7 +59,7 @@ PORT_SOURCES := \
 	$(AVR_PORT_DIR)/portevent.c \
 	$(AVR_PORT_DIR)/porttimer.c
 
-SOURCES       := $(APP_SOURCES) $(MODBUS_SOURCES) $(PORT_SOURCES)
+SOURCES       := $(APP_SOURCES) $(MODBUS_SOURCES) $(PORT_SOURCES) $(I2C_LIB_SOURCES)
 OBJECTS       := $(patsubst %.c,$(OBJ_DIR)/%.o,$(SOURCES))
 DEPFILES      := $(patsubst %.c,$(DEP_DIR)/%.d,$(SOURCES))
 
@@ -64,6 +69,7 @@ CPPFLAGS      := \
 	-I$(FREEMODBUS_DIR)/functions \
 	-I$(AVR_PORT_DIR) \
 	-D F_CPU=$(F_CPU) \
+	-D UART_ECHO=$(UART_ECHO) \
 	-D I2C_SLAVE_ADDRESS=$(I2C_SLAVE_ADDRESS) \
 	-D MB_ASCII_ENABLED=0 \
 	-D MB_RTU_ENABLED=1 \
@@ -111,7 +117,7 @@ size: $(ELF)
 	$(SIZE) --mcu=$(MCU) --format=avr $(ELF)
 
 flash: $(HEX)
-	$(AVRDUDE) -p $(MCU) -c $(PROGRAMMER) -U flash:w:$(HEX):i
+	$(AVRDUDE) -p $(MCU) -c $(PROGRAMMER) -U flash:w:$(HEX):i -P $(PROGRAMMER_PORT)
 
 print-config:
 	@echo "MCU=$(MCU) F_CPU=$(F_CPU) BAUD=$(BAUD) I2C_SLAVE_ADDRESS=$(I2C_SLAVE_ADDRESS)"
