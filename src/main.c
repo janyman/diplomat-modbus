@@ -28,16 +28,16 @@
 #define REG_INPUT_NORMAL_POLL_CNT_OFFSET    1
 #define REG_INPUT_EXT_REG_START_OFFSET      2
 
-#define NUM_EXT_REGS 2
+#define NUM_EXT_REGS 4
 
-static int poll_reg_cnt = 0;
-static uint8_t polled_regs[] = { EXT_REG_OUTDOOR_TEMP, EXT_REG_BRINEIN_TEMP };
+static uint8_t poll_reg_cnt = 0;
+static uint8_t polled_regs[] = { EXT_REG_OUTDOOR_TEMP, EXT_REG_BRINEIN_TEMP,EXT_REG_BRINEOUT_TEMP };
 static uint8_t ext_bus_current_reg;
 
-enum ext_bus_state { EXT_BUS_REG_ACCESS, EXT_BUS_DATA_ACCESS_LO, EXT_BUS_DATA_ACCESS_HI };
+enum ext_bus_state { EXT_BUS_REG_ACCESS, EXT_BUS_EXPECT_REG, EXT_BUS_DATA_ACCESS_LO, EXT_BUS_DATA_ACCESS_HI };
 enum ext_bus_state bus_state = EXT_BUS_REG_ACCESS;
 
-static USHORT usRegInputBuf[REG_INPUT_NREGS];
+static volatile USHORT usRegInputBuf[REG_INPUT_NREGS];
 
 volatile uint8_t i2c_out_byte;
 volatile uint8_t ext_bus_reg_byte_lo;
@@ -55,13 +55,15 @@ void I2C_received(uint8_t received_data) {
             break;
         case EXT_CMD_PING_QUERY:
             if (poll_reg_cnt < NUM_EXT_REGS) {
-                i2c_out_byte = polled_regs[poll_reg_cnt];
+                ext_bus_current_reg = polled_regs[poll_reg_cnt];
+                i2c_out_byte = ext_bus_current_reg;
                 poll_reg_cnt++;
+                bus_state = EXT_BUS_EXPECT_REG;
             }
             else {
                 i2c_out_byte = EXT_REPLY_PING_ACK;
                 usRegInputBuf[REG_INPUT_NORMAL_POLL_CNT_OFFSET]++;
-            }            
+            }
             break;
         default:
             // This is entered when a normal EXT BUS register is written to
@@ -70,6 +72,18 @@ void I2C_received(uint8_t received_data) {
             break;
         }
         break;
+    case EXT_BUS_EXPECT_REG:
+        if( received_data == ext_bus_current_reg )
+        {
+            bus_state = EXT_BUS_DATA_ACCESS_LO;
+        }
+        else
+        {
+            /* An unexpected selector aborts this advertised data transfer. */
+            bus_state = EXT_BUS_REG_ACCESS;
+        }
+        bus_state = EXT_BUS_DATA_ACCESS_LO;
+        break;
     case EXT_BUS_DATA_ACCESS_LO:
         ext_bus_reg_byte_lo = received_data;
         bus_state = EXT_BUS_DATA_ACCESS_HI;
@@ -77,7 +91,10 @@ void I2C_received(uint8_t received_data) {
     case EXT_BUS_DATA_ACCESS_HI:
         ext_bus_reg_byte_hi = received_data;
         bus_state = EXT_BUS_REG_ACCESS;
-        usRegInputBuf[REG_INPUT_EXT_REG_START_OFFSET + ext_bus_current_reg] = (ext_bus_reg_byte_hi << 8) | ext_bus_reg_byte_lo;
+
+        usRegInputBuf[REG_INPUT_EXT_REG_START_OFFSET + ext_bus_current_reg] =
+            ( ( USHORT )ext_bus_reg_byte_hi << 8 ) | ext_bus_reg_byte_lo;
+        
         break;
     }
 }
