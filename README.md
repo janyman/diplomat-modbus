@@ -10,12 +10,18 @@ This software and schematics in this repository should be considered an experime
 
 ## What exists currently
 
-A firmware implementation that polls a number of Control unit registers, and makes the values accessible via Modbus. There is no support for changing value of registers via Modbus.
+A firmware implementation that polls a number of Control unit registers, and makes the values accessible via Modbus. There is no support for changing value of registers via Modbus. There are several reliability issues howeer.
 
 The firmware is being developed on an Arduino Uno board, ATmega328P microcontroller. There is a Modbus RTU interface implementation, but there is no RS485 transciever support yet. 
 
 * Modbus RTU slave address 10
-* 9600 bps, 8N1
+* 9600 bps, 8E1
+
+Modbus poll command:
+
+```sh
+mbpoll -a 10 -b 9600 -P even -t 3 -r 1000 -c 20  /dev/ttyACM0
+```
 
 
 ## Background information: The Ext.COM bus
