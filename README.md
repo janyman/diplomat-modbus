@@ -22,18 +22,22 @@ The firmware is being developed on an Arduino Uno board, ATmega328P microcontrol
 
 Careful examination of the Thermia Diplomat wiring diagram shows that the Control unit (451) has an interface called "Ext. COM". This is the only official reference of what appears to be an I2C bus, as explained in the Finnish-language article ["Danfoss-lämpöpumpun salaisuudet"](https://omakotikotitalomme.blogspot.com/2015/03/danfoss-lampopumpun-salaisuudet.html). 
 
+
+
 ### Physical layer
 
 The Ext.COM bus connector is labelled "EXT" on the Control unit board inside the heat pump enclosure. The connector is a 4-way pin header with 2.54 mm pitch.
 
-Electrically, the EXT bus is I2C with 5-volt signal levels, and running at 400 kHz clock. The pin assignment is the following, starting from the topmost pin:
+![Thermia Control unit Ext.COM connector](images/thermia_ext_com.jpg))
 
-+5V Vcc supply rail?
-SCL
-SDA
-GND
+Measurements on a 2020 Thermia Diplomat Optimum show the EXT bus as I2C with 5V signal levels and operating at 400 kHz serial clock rate. The pin assignment is the following, starting from the topmost pin:
 
-I haven't been able to find any information about the +5V rail on the connector, so my advice is that you should not use it to power anything, instead you should power the board from an external power supply.
+1. +5V Vcc supply rail?
+2. SCL
+3. SDA
+4. GND
+
+I haven't been able to find any information about the +5V rail on the connector, so my advice is that you should not use it to power anything, instead you should power your Modbus interface board from an external power supply.
 
 
 ### I2C bus details

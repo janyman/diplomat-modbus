@@ -9,7 +9,6 @@ PROJECT       ?= diplomat-modbus
 MCU           ?= atmega328p
 F_CPU         ?= 16000000UL
 BAUD          ?= 9600
-UART_ECHO     ?= 0
 I2C_SLAVE_ADDRESS ?= 0x2e
 PROGRAMMER	  ?= arduino
 PROGRAMMER_PORT ?= /dev/ttyACM0
@@ -69,7 +68,6 @@ CPPFLAGS      := \
 	-I$(FREEMODBUS_DIR)/functions \
 	-I$(AVR_PORT_DIR) \
 	-D F_CPU=$(F_CPU) \
-	-D UART_ECHO=$(UART_ECHO) \
 	-D I2C_SLAVE_ADDRESS=$(I2C_SLAVE_ADDRESS) \
 	-D MB_ASCII_ENABLED=0 \
 	-D MB_RTU_ENABLED=1 \

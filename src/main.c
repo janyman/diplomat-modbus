@@ -5,11 +5,9 @@
 #include "mb.h"
 #include "mbport.h"
 #include "ext_bus.h"
+#include "sys_timer.h"
 #include "../avr-i2c-slave/I2CSlave.h"
 
-#ifndef UART_ECHO
-#define UART_ECHO 1
-#endif
 
 #ifndef I2C_SLAVE_ADDRESS
 #define I2C_SLAVE_ADDRESS 0x2e
@@ -22,16 +20,17 @@
 #define MODBUS_SLAVE_ADDRESS 0x0a
 
 #define REG_INPUT_START 1000
-#define REG_INPUT_NREGS 20
+#define REG_INPUT_NREGS 40
 
 #define REG_INPUT_BOOT_POLL_CNT_OFFSET      0
 #define REG_INPUT_NORMAL_POLL_CNT_OFFSET    1
-#define REG_INPUT_EXT_REG_START_OFFSET      2
+#define REG_INPUT_POLL_ITERATION            2
+#define REG_INPUT_EXT_REG_START_OFFSET      10
 
 #define NUM_EXT_REGS 4
 
 static uint8_t poll_reg_cnt = 0;
-static uint8_t polled_regs[] = { EXT_REG_OUTDOOR_TEMP, EXT_REG_BRINEIN_TEMP,EXT_REG_BRINEOUT_TEMP };
+static uint8_t polled_regs[] = { EXT_REG_OUTDOOR_TEMP, EXT_REG_BRINEIN_TEMP,EXT_REG_BRINEOUT_TEMP, EXT_REG_HOTWATER_TEMP };
 static uint8_t ext_bus_current_reg;
 
 enum ext_bus_state { EXT_BUS_REG_ACCESS, EXT_BUS_EXPECT_REG, EXT_BUS_DATA_ACCESS_LO, EXT_BUS_DATA_ACCESS_HI };
@@ -103,11 +102,11 @@ void I2C_requested() {
   I2C_transmitByte(i2c_out_byte);
 }
 
-#if !UART_ECHO
-int
-main(void)
+int main(void)
 {
     eMBErrorCode status;
+
+    sys_timer_init();
 
     status = eMBInit(MB_RTU, MODBUS_SLAVE_ADDRESS, 0,
                      MODBUS_BAUD_RATE, MB_PAR_EVEN, 1);
@@ -136,47 +135,16 @@ main(void)
     for( ;; )
     {
         (void)eMBPoll();
-    
-        #if 0
-        uint8_t byte;
-        xMBPortSerialGetByte(&byte);
-        if (byte == 'a') {
-            xMBPortSerialPutByte('a');
-        } else {
-            xMBPortSerialPutByte('b');
+        static sys_time_t last_poll_time;
+        if (sys_timer_now() > last_poll_time + 10000) {
+            last_poll_time = sys_timer_now();
+            poll_reg_cnt = 0;
+
+            static int iteration;
+            usRegInputBuf[REG_INPUT_POLL_ITERATION] = ++iteration;
         }
-            #endif
-        
     }
 }
-
-#else
-int
-main(void)
-{
-    const uint16_t ubrr = (uint16_t)((F_CPU / (16UL * MODBUS_BAUD_RATE)) - 1UL);
-
-    /* Minimal 8-bit, even-parity, one-stop-bit UART echo for bench testing. */
-    UBRR0 = ubrr;
-    UCSR0C = _BV(UPM01) | _BV(UCSZ01) | _BV(UCSZ00);
-    UCSR0B = _BV(RXEN0) | _BV(TXEN0);
-
-    for( ;; )
-    {
-        uint8_t byte;
-
-        while( !( UCSR0A & _BV(RXC0) ) )
-        {
-        }
-        byte = UDR0;
-
-        while( !( UCSR0A & _BV(UDRE0) ) )
-        {
-        }
-        UDR0 = byte;
-    }
-}
-#endif
 
 eMBErrorCode
 eMBRegInputCB(UCHAR *pucRegBuffer, USHORT usAddress, USHORT usNRegs)
