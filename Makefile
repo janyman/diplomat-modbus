@@ -84,7 +84,8 @@ HEX_EEPROM_FLAGS := -j .eeprom \
 
 .PHONY: all elf hex eep lss size clean flash print-config
 
-all: $(HEX) $(EEP) $(LSS)
+# Build the output files and report the final flash/RAM usage.
+all: $(HEX) $(EEP) $(LSS) size
 
 elf: $(ELF)
 hex: $(HEX)
