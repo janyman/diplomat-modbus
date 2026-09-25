@@ -41,7 +41,21 @@ Measurements on a 2020 Thermia Diplomat Optimum show the EXT bus as I2C with 5V 
 3. SDA
 4. GND
 
-I haven't been able to find any information about the +5V rail on the connector, so my advice is that you should not use it to power anything, instead you should power your Modbus interface board from an external power supply.
+### Can we use the +5V rail of Ext.COM bus to power something?
+
+I haven't been able to find any information about the +5V rail on the connector.
+
+I have made some empirical measurements, and I believe it is possible to draw some tens of mA continously from the +5V pin, but *we don't have any official specification* about this.
+
+My tests suggest the following:
+
+    * Unloaded voltage: about 4.975 V, which is coherent with rail being a proper 5 V supply.
+    * ~10.6 mA load (470 Ω): essentially no significant voltage drop, just a fiew 10 mV.
+    * ~22.7 mA load (220 Ω): the rail remains close to 5 V.
+    * ~50 mA load (100 Ω): the rail still settles around 4.9 V.
+
+So it seems that the +5V pin of Ext.COM behaves like a fairly stiff +5V rail, at the current levels needed for a MCU+RS485 hardware, estimated at around 20 mA. The fall in voltage as current increases could be due to some kind of protection element present on the rail, but we don't know. It certainly appears that the rail is not directly fed from a voltage regulator, as it isn't as low-impedance as one would expect from an output of a dedicated regulator.
+
 
 
 ### I2C bus details
