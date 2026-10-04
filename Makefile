@@ -71,7 +71,8 @@ CPPFLAGS      := \
 	-D I2C_SLAVE_ADDRESS=$(I2C_SLAVE_ADDRESS) \
 	-D MB_ASCII_ENABLED=0 \
 	-D MB_RTU_ENABLED=1 \
-	-D MB_TCP_ENABLED=0
+	-D MB_TCP_ENABLED=0 \
+	-D RTS_ENABLE
 
 CFLAGS        := -mmcu=$(MCU) -std=gnu11 -Os -Wall -Wextra \
 	-ffunction-sections -fdata-sections

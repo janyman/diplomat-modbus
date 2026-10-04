@@ -122,9 +122,10 @@ typedef long    LONG;
 /* ----------------------- RS485 specifics ----------------------------------*/
 #ifdef  RTS_ENABLE
 
-#define RTS_PIN         PB0
-#define RTS_DDR         DDRB
-#define RTS_PORT        PORTB
+
+#define RTS_PIN         PD2
+#define RTS_DDR         DDRD
+#define RTS_PORT        PORTD
 
 #define RTS_INIT        \
     do { \
