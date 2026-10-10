@@ -15,7 +15,43 @@ A firmware implementation that polls a number of Control unit registers, and mak
 The firmware is being developed on an Arduino Uno board, ATmega328P microcontroller. There is a Modbus RTU interface implementation, but there is no RS485 transciever support yet. 
 
 * Modbus RTU slave address 10
-* 9600 bps, 8E1
+* 9600 bps, 8E1 (build with `BAUD=19200` for 19200 bps)
+
+### Custom ATmega328P board clock and fuses
+
+The Arduino Uno uses a 16 MHz external crystal. The custom board has no
+crystal, so build it for the ATmega328P's calibrated 8 MHz internal RC
+oscillator:
+
+```sh
+make clean all BAUD=9600
+```
+
+The low fuse must select the internal oscillator and leave `CKDIV8`
+unprogrammed. The recommended low fuse is `0xE2`; leaving the factory
+`CKDIV8` setting in place would run the chip at 1 MHz and make 9600/19200
+UART operation inaccurate. At 8 MHz, the normal UART divisor gives about
+0.16% baud error at both 9600 and 19200 bps.
+
+Program the fuses over ISP before or after flashing the application:
+
+```sh
+make read-fuses PROGRAMMER=usbasp PROGRAMMER_PORT=
+make fuses PROGRAMMER=usbasp PROGRAMMER_PORT=
+make flash PROGRAMMER=usbasp PROGRAMMER_PORT=
+```
+
+The default fuse set (`LFUSE=0xE2`, `HFUSE=0xD9`, `EFUSE=0xFF`) is for a bare
+application without a bootloader. If a bootloader is installed, use its
+required high/extended fuse values, but retain `LFUSE=0xE2` for the internal
+8 MHz clock. Fuse writes can make a device inaccessible when the selected
+clock source or programmer wiring is wrong; use ISP and verify with
+`make read-fuses`.
+
+Factory settings:
+-`LFUSE=0x62`: internal 8 MHz RC oscillator divided by 8 → actual CPU clock is 1 MHz
+- `HFUSE=0xD9`: suitable for direct ISP application startup
+- `EFUSE=0xFF`: brown-out detection disabled
 
 Modbus poll command:
 
