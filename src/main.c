@@ -1,6 +1,8 @@
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <util/twi.h>
+#include <util/atomic.h>
+
 
 #include "mb.h"
 #include "mbport.h"
@@ -20,17 +22,52 @@
 #define MODBUS_SLAVE_ADDRESS 0x0a
 
 #define REG_INPUT_START 1000
-#define REG_INPUT_NREGS 40
+
 
 #define REG_INPUT_BOOT_POLL_CNT_OFFSET      0
 #define REG_INPUT_NORMAL_POLL_CNT_OFFSET    1
 #define REG_INPUT_POLL_ITERATION            2
+#define REG_INPUT_BUS_ERROR_CNT             3
+#define REG_INPUT_BUS_STATE_GLITCH_CNT      4
 #define REG_INPUT_EXT_REG_START_OFFSET      10
 
-#define NUM_EXT_REGS 4
+#define REG_INPUT_NREGS (REG_INPUT_EXT_REG_START_OFFSET + EXT_REG_MAX_REG_ADDRESS + 1)
+#define NUM_EXT_REGS 31
 
 static uint8_t poll_reg_cnt = 0;
-static uint8_t polled_regs[] = { EXT_REG_OUTDOOR_TEMP, EXT_REG_BRINEIN_TEMP,EXT_REG_BRINEOUT_TEMP, EXT_REG_HOTWATER_TEMP };
+static uint8_t polled_regs[] = { 
+    EXT_REG_OUTDOOR_TEMP,
+    EXT_REG_TARGET_TEMP,
+    EXT_REG_SUPPLYLINE_TEMP,
+    EXT_REG_RETURNLINE_TEMP,
+    EXT_REG_HOTWATER_TEMP,
+    EXT_REG_BRINEIN_TEMP,
+    EXT_REG_BRINEOUT_TEMP,
+    EXT_REG_SUPPLYLINE_SHUNT,
+    EXT_REG_AUX_HEATER_STATUS_BITMAP,
+    EXT_REG_SUPPLYLINE_TARGET_TEMP,
+    EXT_REG_SUPPLYLINE_TARGET_TEMP_SHUNT,
+    EXT_REG_STATUS1,
+    EXT_REG_STATUS2,
+    EXT_REG_PWM_OUT,
+    EXT_REG_ALARM1,
+    EXT_REG_ALARM2,
+    EXT_REG_PRESSURE_PIPE_TEMP,
+    EXT_REG_HOT_WATER_SUPPLY_LIME_TEMP,
+    EXT_REG_INTEGRAL,
+    EXT_REG_INTEGRAL_REACHED_A_LIMIT,
+    EXT_REG_PROGRAM_VERSION,
+    EXT_REG_FLOWLINE_PUMP_SPEED,
+    EXT_REG_BRINE_PUMP_SPEED,
+    EXT_REG_RUNTIME_COMPRESSOR,
+    EXT_REG_RUNTIME_COMPRESSOR_LOW_RES,
+    EXT_REG_RUNTIME_3KW,
+    EXT_REG_RUNTIME_3KW_LOW_RES,
+    EXT_REG_RUNTIME_HOTWATER,
+    EXT_REG_RUNTIME_HOTWATER_LOW_RES,
+    EXT_REG_RUNTIME_6KW,
+    EXT_REG_RUNTIME_6KW_LOW_RES,
+};
 static uint8_t ext_bus_current_reg;
 
 enum ext_bus_state { EXT_BUS_REG_ACCESS, EXT_BUS_EXPECT_REG, EXT_BUS_DATA_ACCESS_LO, EXT_BUS_DATA_ACCESS_HI };
@@ -81,7 +118,6 @@ void I2C_received(uint8_t received_data) {
             /* An unexpected selector aborts this advertised data transfer. */
             bus_state = EXT_BUS_REG_ACCESS;
         }
-        bus_state = EXT_BUS_DATA_ACCESS_LO;
         break;
     case EXT_BUS_DATA_ACCESS_LO:
         ext_bus_reg_byte_lo = received_data;
@@ -91,8 +127,10 @@ void I2C_received(uint8_t received_data) {
         ext_bus_reg_byte_hi = received_data;
         bus_state = EXT_BUS_REG_ACCESS;
 
-        usRegInputBuf[REG_INPUT_EXT_REG_START_OFFSET + ext_bus_current_reg] =
-            ( ( USHORT )ext_bus_reg_byte_hi << 8 ) | ext_bus_reg_byte_lo;
+        if (ext_bus_current_reg <= EXT_REG_MAX_REG_ADDRESS) {
+            usRegInputBuf[REG_INPUT_EXT_REG_START_OFFSET + ext_bus_current_reg] =
+                ( ( USHORT )ext_bus_reg_byte_hi << 8 ) | ext_bus_reg_byte_lo;
+        }
         
         break;
     }
@@ -100,6 +138,28 @@ void I2C_received(uint8_t received_data) {
 
 void I2C_requested() {
   I2C_transmitByte(i2c_out_byte);
+}
+
+void I2C_transaction_end() {
+    // Ensure coherent EXT BUS state, as the I2C transaction is now finished
+    switch (bus_state) {
+        case EXT_BUS_REG_ACCESS:
+        case EXT_BUS_EXPECT_REG:
+            // these are valid ext bus states states when i2c transaction ends
+            break;
+        case EXT_BUS_DATA_ACCESS_LO:
+        case EXT_BUS_DATA_ACCESS_HI:
+            // If transaction ends while we are in these states, then we have missed something and we have an incoherent state
+            bus_state = EXT_BUS_REG_ACCESS;
+            break;
+    }
+}
+
+void I2C_transaction_abort() {
+    /* A bus error invalidates even an otherwise valid pending query. */
+    bus_state = EXT_BUS_REG_ACCESS;
+
+    usRegInputBuf[REG_INPUT_BUS_ERROR_CNT]++;
 }
 
 int main(void)
@@ -121,6 +181,8 @@ int main(void)
 
    
     I2C_setCallbacks(I2C_received, I2C_requested);
+    I2C_setTransactionEndCallback(I2C_transaction_end);
+    I2C_setTransactionAbortCallback(I2C_transaction_abort);
     I2C_init(I2C_SLAVE_ADDRESS);
 
     status = eMBEnable();
@@ -157,11 +219,19 @@ eMBRegInputCB(UCHAR *pucRegBuffer, USHORT usAddress, USHORT usNRegs)
         return MB_ENOREG;
     }
 
+    USHORT value;
     reg_index = (int)(usAddress - REG_INPUT_START);
+
     while( usNRegs > 0 )
     {
-        *pucRegBuffer++ = (UCHAR)(usRegInputBuf[reg_index] >> 8);
-        *pucRegBuffer++ = (UCHAR)(usRegInputBuf[reg_index] & 0xff);
+        // Ensure that the 16-bit entity is properly read, as it is accessed both from ISR context and main loop context.
+        ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+        {
+            value = usRegInputBuf[reg_index];
+        }
+
+        *pucRegBuffer++ = (UCHAR)(value >> 8);
+        *pucRegBuffer++ = (UCHAR)(value & 0xff);
         reg_index++;
         usNRegs--;
     }

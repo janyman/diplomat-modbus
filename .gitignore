@@ -1,3 +1,4 @@
 /build/
 hw/*.s\#?
 hw/*.b\#?
+hw/jlcpcb_private

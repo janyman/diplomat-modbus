@@ -112,6 +112,15 @@ But if the slave responds with a byte other than 0xff, then that byte value is u
 
 The current implementation does the protocol processing inside callbacks called from the i2c (twi) interrupt routine - this is OK for now, but we must be extra careful that we don't start spending too much time inside the isr, as that causes the MCU to hold SCL low during that time (in other words, we would introduce clock stretching) and we don't know if the Ext.COM bus master supports that.
 
+## Hardware
+
+The connector SV1 is for I2C
+
+1. VCC +5V
+2. SCL
+3. SDA
+4. GND
+
 ## References
 
 EXT bus secrets revealed: https://omakotikotitalomme.blogspot.com/2015/03/danfoss-lampopumpun-salaisuudet.html

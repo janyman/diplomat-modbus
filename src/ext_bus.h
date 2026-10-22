@@ -5,6 +5,10 @@
 
 #define EXT_REPLY_PING_ACK          0xff
 
+
+// https://thermiq.net/ThermIQ_MQTT_Installation.pdf
+
+// INT16 registers
 #define EXT_REG_OUTDOOR_TEMP        0x00
 #define EXT_REG_INDOOR_TEMP        0x01
 #define EXT_REG_INDOOR_DEC_TEMP        0x02
@@ -18,3 +22,35 @@
 #define EXT_REG_COOLING_TEMP        0x0a
 #define EXT_REG_SUPPLYLINE_SHUNT    0x0b
 #define EXT_REG_ELECTRICAL_CURRENT  0x0c
+
+#define EXT_REG_AUX_HEATER_STATUS_BITMAP 0xd
+#define EXT_REG_SUPPLYLINE_TARGET_TEMP 0xe
+#define EXT_REG_SUPPLYLINE_TARGET_TEMP_SHUNT 0xf
+#define EXT_REG_STATUS1 0x10
+#define EXT_REG_STATUS2 0x11
+#define EXT_REG_PWM_OUT 0x12
+#define EXT_REG_ALARM1  0x13
+#define EXT_REG_ALARM2  0x14
+#define EXT_REG_ALARM2_BIT_OUTDOOR_SENSOR (1 << 0)
+
+
+#define EXT_REG_PRESSURE_PIPE_TEMP 0x17
+#define EXT_REG_HOT_WATER_SUPPLY_LIME_TEMP 0x24
+#define EXT_REG_INTEGRAL 0x19   // C*min
+#define EXT_REG_INTEGRAL_REACHED_A_LIMIT 0x1a
+
+#define EXT_REG_PROGRAM_VERSION 0x1d
+#define EXT_REG_FLOWLINE_PUMP_SPEED 0x1e    // %
+#define EXT_REG_BRINE_PUMP_SPEED 0x1f   // %
+
+// UINT16 registers
+#define EXT_REG_RUNTIME_COMPRESSOR 0x68
+#define EXT_REG_RUNTIME_COMPRESSOR_LOW_RES 0x69 //Multiply value with 256
+#define EXT_REG_RUNTIME_3KW 0x6a
+#define EXT_REG_RUNTIME_3KW_LOW_RES 0x6b //Multiply value with 256
+#define EXT_REG_RUNTIME_HOTWATER 0x6c
+#define EXT_REG_RUNTIME_HOTWATER_LOW_RES 0x6d //Multiply value with 256
+#define EXT_REG_RUNTIME_6KW 0x72
+#define EXT_REG_RUNTIME_6KW_LOW_RES 0x73 //Multiply value with 256
+
+#define EXT_REG_MAX_REG_ADDRESS EXT_REG_RUNTIME_6KW_LOW_RES
