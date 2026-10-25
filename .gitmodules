@@ -3,4 +3,4 @@
 	url = https://github.com/cwalter-at/freemodbus.git
 [submodule "avr-i2c-slave"]
 	path = avr-i2c-slave
-	url = https://github.com/thegouger/avr-i2c-slave.git
+	url = git@github.com:janyman/avr-i2c-slave.git
