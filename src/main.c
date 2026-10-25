@@ -29,6 +29,7 @@
 #define REG_INPUT_POLL_ITERATION            2
 #define REG_INPUT_BUS_ERROR_CNT             3
 #define REG_INPUT_BUS_STATE_GLITCH_CNT      4
+#define REG_INPUT_ILLEGAL_ADDRESS_CNT       5
 #define REG_INPUT_EXT_REG_START_OFFSET      10
 
 #define REG_INPUT_NREGS (REG_INPUT_EXT_REG_START_OFFSET + EXT_REG_MAX_REG_ADDRESS + 1)
@@ -70,7 +71,7 @@ static uint8_t polled_regs[] = {
 };
 static uint8_t ext_bus_current_reg;
 
-enum ext_bus_state { EXT_BUS_REG_ACCESS, EXT_BUS_EXPECT_REG, EXT_BUS_DATA_ACCESS_LO, EXT_BUS_DATA_ACCESS_HI };
+enum ext_bus_state { EXT_BUS_REG_ACCESS, EXT_BUS_DATA_ACCESS_LO, EXT_BUS_DATA_ACCESS_HI };
 enum ext_bus_state bus_state = EXT_BUS_REG_ACCESS;
 
 static volatile USHORT usRegInputBuf[REG_INPUT_NREGS];
@@ -93,8 +94,6 @@ void I2C_received(uint8_t received_data) {
             if (poll_reg_cnt < NUM_EXT_REGS) {
                 ext_bus_current_reg = polled_regs[poll_reg_cnt];
                 i2c_out_byte = ext_bus_current_reg;
-                poll_reg_cnt++;
-                bus_state = EXT_BUS_EXPECT_REG;
             }
             else {
                 i2c_out_byte = EXT_REPLY_PING_ACK;
@@ -108,17 +107,6 @@ void I2C_received(uint8_t received_data) {
             break;
         }
         break;
-    case EXT_BUS_EXPECT_REG:
-        if( received_data == ext_bus_current_reg )
-        {
-            bus_state = EXT_BUS_DATA_ACCESS_LO;
-        }
-        else
-        {
-            /* An unexpected selector aborts this advertised data transfer. */
-            bus_state = EXT_BUS_REG_ACCESS;
-        }
-        break;
     case EXT_BUS_DATA_ACCESS_LO:
         ext_bus_reg_byte_lo = received_data;
         bus_state = EXT_BUS_DATA_ACCESS_HI;
@@ -130,7 +118,11 @@ void I2C_received(uint8_t received_data) {
         if (ext_bus_current_reg <= EXT_REG_MAX_REG_ADDRESS) {
             usRegInputBuf[REG_INPUT_EXT_REG_START_OFFSET + ext_bus_current_reg] =
                 ( ( USHORT )ext_bus_reg_byte_hi << 8 ) | ext_bus_reg_byte_lo;
+        } else {
+            usRegInputBuf[REG_INPUT_ILLEGAL_ADDRESS_CNT]++;
         }
+
+        poll_reg_cnt++;
         
         break;
     }
@@ -144,7 +136,6 @@ void I2C_transaction_end() {
     // Ensure coherent EXT BUS state, as the I2C transaction is now finished
     switch (bus_state) {
         case EXT_BUS_REG_ACCESS:
-        case EXT_BUS_EXPECT_REG:
             // these are valid ext bus states states when i2c transaction ends
             break;
         case EXT_BUS_DATA_ACCESS_LO:
